@@ -1,0 +1,3 @@
+[submodule "detect-secrets"]
+	path = detect-secrets
+	url = https://github.com/Yelp/detect-secrets.git

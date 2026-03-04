@@ -6,7 +6,7 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"includes": ["**", "!!**/dist"]
+		"includes": ["**", "!!**/dist", "!!detect-secrets", "!!.venv"]
 	},
 	"formatter": {
 		"enabled": true,
