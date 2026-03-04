@@ -118,7 +118,7 @@ logo: ## Generate logo, icons, and favicon (requires APP__GEMINI_API_KEY)
 ### Testing
 test: ## Run Rust tests
 	@echo "$(GREEN)🧪Running Rust Tests...$(RESET)"
-	cd src-tauri && cargo test
+	cargo test --workspace --exclude tauri-app
 	@echo "$(GREEN)✅Rust Tests Passed.$(RESET)"
 
 test_fast: ## Run fast tests (Rust)
