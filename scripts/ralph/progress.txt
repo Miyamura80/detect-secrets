@@ -1,0 +1,519 @@
+# Ralph Progress Log
+Started: Mon Mar  2 21:44:50 UTC 2026
+
+## Codebase Patterns
+- Use `source .venv/bin/activate && maturin develop` to build and install the Python package
+- The Python crate is at `crates/python/` and depends on `crates/engine/` for pure Rust logic
+- PyO3 module name must match `lib.name` in `crates/python/Cargo.toml` (currently `detect_secrets_rs`)
+- maturin config lives in root `pyproject.toml` with `manifest-path` pointing to `crates/python/Cargo.toml`
+- `cargo clippy` shows a benign `cdylib` warning on musl targets - this is expected and doesn't affect maturin builds
+- Always run `cargo test -p engine -p detect-secrets-rs` to test both crates
+- For negative lookaheads `(?![...])` (unsupported by Rust `regex`), use `(?:[^...]|$)` as a non-capturing boundary assertion — consumes the next char but doesn't affect capture groups
+- All detector plugin structs must derive `Clone` for PyO3 wrapper compatibility (`Regex` implements `Clone`)
+- Cloud/infra detectors pattern: struct with `Vec<Regex>`, `impl SecretDetector` + `RegexBasedDetector`, `impl Default`, `#[derive(Clone)]`
+- The `detect-secrets/` submodule contains the original Python Yelp/detect-secrets for reference
+- Git identity must be configured locally (`git config user.email/name`) - no global config exists
+- PyO3 wrapper pattern: create a `crates/python/src/<module>.rs` file with a `#[pyclass]` wrapper around the engine struct, then register in `crates/python/src/lib.rs` via `m.add_class::<>()`
+- For converting between Python dicts and serde_json Values, use helper functions `pydict_to_json_value` / `json_value_to_pydict` in the python crate
+- The existing test in `potential_secret.rs` for `hash_secret("my_secret")` had wrong expected value - was fixed to `7585d1f7ceb90fd0b1ab42d0a6ca39fcf55065c7`
+- For PyO3 modules with only functions (no classes), use a `pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()>` pattern and call `entropy::register(m)?` in lib.rs
+- Rust `regex` crate does NOT support lookbehinds (`(?<=...)`). Use `(?:^|\W)` instead of Python's `(?:(?<=\W)|(?<=^))`
+- For regex patterns containing single quotes in raw strings, use `r#"..."#` syntax to avoid Rust lexer confusion
+- The `regex_analyze_string` free function implements the default `RegexBasedDetector.analyze_string()` — plugins call it from their `SecretDetector::analyze_string()` impl
+- Plugin trait pattern: `SecretDetector` (base) + `RegexBasedDetector` (regex-specific) traits in `crates/engine/src/plugin.rs`
+- For `(?!\w)` negative lookahead (unsupported by Rust regex): use `(?:\W|$)` consuming boundary. For patterns WITHOUT capture groups, wrap the token in `(...)` so `regex_analyze_string` returns group 1 only
+- JwtTokenDetector overrides `analyze_string()` to filter candidates — any plugin needing custom validation can do this instead of using `regex_analyze_string` directly
+- Filters are organized as a `filters` submodule: `crates/engine/src/filters/{mod,heuristic,allowlist,common}.rs`
+- Use `once_cell::sync::Lazy` for static regex and HashSet initialization in filter modules
+- Allowlist filter uses pre-compiled regexes for 6 comment styles (Python, Go, C, VB.NET, SQL, XML) with both same-line and nextline pragma variants
+- `is_line_allowlisted()` takes `previous_line` as a flat string parameter (Rust doesn't have Python's CodeSnippet context object yet)
+- YAML files are optimized to only check `#` comment style; all other file types check all 6 comment styles
+- Settings module (`crates/engine/src/settings.rs`) provides global singleton via `once_cell::sync::Lazy<Mutex<Settings>>` — use `get_settings()` / `get_settings_mut()` for thread-safe access
+- Plugin registry: `builtin_plugins()` returns all 27 built-in plugins with class names and factory functions; `get_mapping_from_class_name()` provides `HashMap<&str, PluginFactory>` lookup
+- `TransientSettingsGuard` is the Rust equivalent of Python's `transient_settings()` context manager — RAII guard restores settings on drop
+- PyO3 `bool.into_pyobject(py)?` returns a `Borrowed` reference — must use `.to_owned()` before `.into_any().unbind()` to avoid move errors
+- For nested JSON ↔ Python conversion, the `settings.rs` PyO3 module has its own `json_value_to_py()` / `py_to_json_value()` helpers that handle arrays, nested dicts, and all Value types
+- SecretsCollection uses `HashMap<String, HashSet<PotentialSecret>>` — Python's `defaultdict(set)` maps to `HashMap::entry().or_default()`
+- For mutating items in a HashSet (e.g., merge), extract into HashMap by identity key, mutate, then rebuild — HashSet doesn't allow mutable access to elements
+- `secrets_collection.rs` PyO3 has its own `json_value_to_py()` / `pydict_to_json_value()` helpers that handle nested arrays and dicts recursively (needed for results format)
+- Scan pipeline lives in `crates/engine/src/scan.rs` — `scan_file()`, `scan_line()`, `scan_diff()`, `get_files_to_scan()` are the public entry points
+- For diff scanning, skip `IsInvalidFile` filter — files in a diff may not exist on the local filesystem
+- `ScanFilterContext::from_settings()` captures all filter config (regexes, wordlist) at scan start — avoids repeated settings lookups during line iteration
+- `is_regex_based()` heuristic: check `plugin.secret_type()` — High Entropy and Keyword plugins are NOT regex-based (needed for `is_likely_id_string` filter)
+- `CodeSnippet` struct provides previous-line context for allowlist detection (mirrors Python's `CodeSnippet` from `util/code_snippet.py`)
+- `BASELINE_VERSION` constant (`1.5.0`) in `baseline.rs` — used for baseline format compatibility with Python detect-secrets (separate from crate `VERSION` which is `0.1.0`)
+- Enable `serde_json` `preserve_order` feature in engine crate — JSON key insertion order is preserved (needed for baseline output matching Python format)
+- `get_files_to_scan()` returns paths relative to root — `create()` must resolve back to absolute paths for `scan_file()` to read from disk
+- Tests using `default_settings()` must keep the guard alive: `let _guard = settings::default_settings()` (not `let _ = ...` which drops immediately)
+- Tests using `get_files_to_scan()` with empty paths scan the root directory — never use `/tmp` as root (recursively walks all files), use a dedicated empty temp directory
+- For parallel scanning, use `ParallelScanContext` pattern: capture settings into `Arc` wrappers once before `rayon::par_iter()` — avoids global mutex contention
+- PyO3 bindings for CPU-bound parallel code must use `py.allow_threads(|| ...)` to release the GIL
+- Mixed Python/Rust project: set `python-source = "python"` in `[tool.maturin]` and create `python/<package>/` with `__init__.py`
+- For CLI entry points, add `[project.scripts]` to pyproject.toml pointing to Python modules that import the Rust extension
+- Global settings mutation from Python CLI: use `global_*` PyO3 functions (e.g. `global_disable_plugins`, `global_set_filter`) that modify the singleton directly
+- PySecretsCollection's `__iter__` returns a PyList (not a Python iterator) — iterate with `secrets.files` + `secrets[filename]` pattern instead
+
+---
+
+## 2026-03-02 - US-001
+- Set up Rust workspace with PyO3 and maturin
+- Added `crates/python` to workspace members in root `Cargo.toml`
+- Created `crates/python/Cargo.toml` with PyO3 0.23 and cdylib crate type
+- Created `crates/python/src/lib.rs` with `#[pymodule]` exposing `version()`
+- Added `version()` placeholder and `VERSION` const to `crates/engine/src/lib.rs`
+- Created root `pyproject.toml` with maturin build backend
+- Updated `.gitignore` with Python patterns
+- Files changed: `Cargo.toml`, `Cargo.lock`, `crates/engine/src/lib.rs`, `crates/python/Cargo.toml`, `crates/python/src/lib.rs`, `pyproject.toml`, `.gitignore`
+- **Learnings for future iterations:**
+  - PyO3 0.23 uses `Bound<'_, PyModule>` API (not `&PyModule`)
+  - The existing `crates/engine` has Tauri template code (commands, context, doctor, etc.) - detect-secrets logic should be added alongside
+  - maturin 1.12.6 and Python 3.12.12 are available in `.venv`
+  - Rust toolchain is stable musl (from rust-toolchain.toml)
+---
+
+## 2026-03-02 - US-002
+- Implemented PotentialSecret data model with full PyO3 bindings
+- Created `crates/engine/src/potential_secret.rs`: Rust struct with SHA1 hashing, equality (filename, secret_hash, secret_type), Hash+Eq, JSON serialization/deserialization, 15 unit tests
+- Created `crates/python/src/potential_secret.rs`: PyO3 wrapper with `#[pyclass]` exposing all properties, `json()`, `load_secret_from_dict()`, `set_secret()`, `hash_secret()`, `__eq__`, `__hash__`, `__str__`, `__repr__`
+- Updated `crates/python/src/lib.rs`: registered `PotentialSecret` class and module-level `hash_secret()` function
+- Added `serde_json` dependency to python crate, `sha1` to engine crate
+- Fixed pre-existing test bug: wrong SHA1 expected value for "my_secret"
+- Files changed: `Cargo.lock`, `crates/engine/Cargo.toml`, `crates/engine/src/lib.rs`, `crates/engine/src/potential_secret.rs`, `crates/python/Cargo.toml`, `crates/python/src/lib.rs`, `crates/python/src/potential_secret.rs`
+- **Learnings for future iterations:**
+  - PyO3 `#[getter(r#type)]` allows exposing a Python property named `type` (reserved in Rust)
+  - PyO3 0.23: `__eq__` returns `bool`, `__hash__` returns `u64`, use `std::collections::hash_map::DefaultHasher`
+  - clippy catches redundant closures in `.map_err()` - use function references directly (e.g. `map_err(PyValueError::new_err)`)
+  - Bool extraction from `PyAny` must come before int extraction (Python bools are ints)
+---
+
+## 2026-03-02 - US-003
+- Implemented Shannon entropy calculation with full PyO3 bindings
+- Created `crates/engine/src/entropy.rs`: `calculate_shannon_entropy(data, charset)` and `calculate_hex_shannon_entropy(data)` with numeric-only reduction path, BASE64_CHARSET and HEX_CHARSET constants, 20 unit tests all verified against Python reference values
+- Created `crates/python/src/entropy.rs`: PyO3 wrappers for both functions plus charset constants, registered via `entropy::register(m)` pattern
+- Updated `crates/engine/src/lib.rs` and `crates/python/src/lib.rs` to register the new module
+- Files changed: `crates/engine/src/entropy.rs`, `crates/engine/src/lib.rs`, `crates/python/src/entropy.rs`, `crates/python/src/lib.rs`
+- **Learnings for future iterations:**
+  - For pure-function PyO3 modules (no `#[pyclass]`), use a `register(m)` function pattern instead of `m.add_class`
+  - Python's `string.hexdigits` = `'0123456789abcdefABCDEF'` (22 chars, includes both cases)
+  - Base64 charset in detect-secrets includes backslash-hyphen `\-` (url-safe variant) — total 68 chars
+  - Shannon entropy formula: `-Σ(p_x * log₂(p_x))` for each charset char with count > 0
+  - Hex numeric reduction: `entropy -= 1.2 / log₂(len)` only when ALL chars are ASCII digits and len > 1
+  - Entropy can go negative after reduction (e.g. "999999" → -0.464)
+---
+
+## 2026-03-02 - US-004
+- Implemented regex-based plugin framework traits with full PyO3 bindings
+- Created `crates/engine/src/plugin.rs`: `SecretDetector` trait (secret_type, analyze_string, analyze_line, verify, json), `RegexBasedDetector` trait (denylist), `regex_analyze_string` free function, `build_assignment_regex` helper, `VerifiedResult` enum, 3 test plugins (PrivateKey, BasicAuth, MultiGroup), 24 unit tests
+- Created `crates/python/src/plugin.rs`: PyO3 wrappers for `VerifiedResult` enum, `RegexBasedDetector` class (concrete, constructible from Python), `build_assignment_regex` function
+- Updated `crates/engine/src/lib.rs` and `crates/python/src/lib.rs` to register the new module
+- Added `regex` dependency to both engine and python crates
+- Files changed: `Cargo.lock`, `crates/engine/Cargo.toml`, `crates/engine/src/lib.rs`, `crates/engine/src/plugin.rs`, `crates/python/Cargo.toml`, `crates/python/src/lib.rs`, `crates/python/src/plugin.rs`
+- **Learnings for future iterations:**
+  - Rust `regex` crate does NOT support lookbehinds — replaced `(?:(?<=\W)|(?<=^))` with `(?:^|\W)`
+  - In raw string literals `r"..."`, single quotes `'` can be confused with char literal syntax — use `r#"..."#` instead
+  - `regex::Captures::len()` returns 1 + number of capture groups (group 0 = full match)
+  - `regex.captures_iter()` is the Rust equivalent of Python's `regex.findall()` — for tuples, iterate groups 1..N
+  - PyO3 enum pattern: `#[pyclass(eq, eq_int)]` + `#[derive(PartialEq, Eq)]` for simple enums with integer values
+  - The `PyRegexBasedDetector` wraps both `SecretDetector` and `RegexBasedDetector` traits, making the Rust framework testable from Python
+  - High-entropy plugins use composition: `HighEntropyStringsPlugin` struct holds charset, regex, and limit; `Base64HighEntropyString` and `HexHighEntropyString` wrap it
+  - Rust regex doesn't support backreferences (`\1`), so quoted-string detection uses two separate regexes (one for single, one for double quotes) instead of Python's `(['"])...\1` pattern
+  - `regex::escape(charset)` is used to safely embed charset characters in regex character classes
+  - Always implement `Default` for plugin structs that have `::default()` called in tests
+---
+
+## 2026-03-02 - US-005
+- Ported high-entropy string plugins (Base64HighEntropyString, HexHighEntropyString) with full PyO3 bindings
+- Created `crates/engine/src/high_entropy_strings.rs`: `HighEntropyStringsPlugin` base struct, `Base64HighEntropyString` (default 4.5), `HexHighEntropyString` (default 3.0, numeric-only reduction), eager search mode, 30 unit tests
+- Created `crates/python/src/high_entropy_strings.rs`: PyO3 wrappers for both plugins with `analyze_string()`, `analyze_line()`, `json()`, `secret_type`/`limit` getters
+- Added `Default` impl for `HexHighEntropyString` (was missing)
+- Applied `cargo fmt` across all crates to pass formatting checks
+- Updated `crates/engine/src/lib.rs` and `crates/python/src/lib.rs` to register high_entropy_strings module
+- Files changed: `crates/engine/src/high_entropy_strings.rs`, `crates/python/src/high_entropy_strings.rs`, `crates/engine/src/lib.rs`, `crates/python/src/lib.rs`, `crates/engine/src/entropy.rs`, `crates/engine/src/plugin.rs`, `crates/engine/src/potential_secret.rs`, `crates/python/src/plugin.rs`, `crates/python/src/potential_secret.rs`
+- **Learnings for future iterations:**
+  - Rust regex doesn't support backreferences — use separate single/double-quote regex patterns
+  - `regex::escape()` is needed when embedding charset strings into `[...]` character classes
+  - Composition > inheritance: wrap a shared `HighEntropyStringsPlugin` struct inside each concrete plugin
+  - Always add `Default` impls when tests use `::default()` — the compiler error is clear but easy to miss
+  - `cargo fmt` can touch many files — run it early and often to avoid large formatting-only diffs
+---
+
+## 2026-03-02 - US-006
+- Ported 7 cloud and infrastructure regex-based detector plugins with full PyO3 bindings
+- Created `crates/engine/src/cloud_detectors.rs`: AWSKeyDetector, AzureStorageKeyDetector, ArtifactoryDetector, CloudantDetector, IbmCloudIamDetector, IbmCosHmacDetector, SoftlayerDetector — all implement SecretDetector + RegexBasedDetector traits, 37 unit tests
+- Created `crates/python/src/cloud_detectors.rs`: PyO3 wrappers for all 7 detectors with analyze_string(), analyze_line(), json(), secret_type getter
+- Updated `crates/engine/src/lib.rs` and `crates/python/src/lib.rs` to register cloud_detectors module
+- Files changed: `crates/engine/src/cloud_detectors.rs`, `crates/engine/src/lib.rs`, `crates/python/src/cloud_detectors.rs`, `crates/python/src/lib.rs`
+- **Learnings for future iterations:**
+  - Rust `regex` crate does NOT support negative lookaheads `(?![...])` — use `(?:[^...]|$)` as a consuming boundary assertion instead
+  - All plugin structs must `#[derive(Clone)]` because PyO3 wrapper structs derive Clone and hold the inner struct
+  - Build test data carefully: AWS key IDs need exactly 4-char prefix + 16 uppercase alphanumeric (20 total); count chars precisely
+  - When two patterns can match overlapping substrings (e.g., 64-hex and 24-lowercase), tests should use values that only match one pattern (use digits in hex strings to distinguish)
+  - Verification methods (verify()) are NOT ported to Rust — they require HTTP requests (Python `requests` library). Left as default `Unverified` for now
+  - CloudantDetector and SoftlayerDetector use both `build_assignment_regex` patterns AND direct `Regex::new` URL patterns in the same denylist
+---
+
+## 2026-03-02 - US-007
+- Ported 6 auth and token regex-based detector plugins with full PyO3 bindings
+- Created `crates/engine/src/auth_detectors.rs`: BasicAuthDetector, DiscordBotTokenDetector, GitHubTokenDetector, GitLabTokenDetector, JwtTokenDetector, PrivateKeyDetector — all implement SecretDetector + RegexBasedDetector traits, 46 unit tests
+- Created `crates/python/src/auth_detectors.rs`: PyO3 wrappers for all 6 detectors with analyze_string(), analyze_line(), json(), secret_type getter
+- JwtTokenDetector includes custom `analyze_string()` override that filters regex matches through `is_formally_valid()` — validates base64 URL-safe decoding + JSON validity of header/payload parts
+- Added `base64` crate dependency to engine for JWT validation
+- Updated `crates/engine/src/lib.rs` and `crates/python/src/lib.rs` to register auth_detectors module
+- Files changed: `crates/engine/src/auth_detectors.rs`, `crates/engine/src/lib.rs`, `crates/engine/Cargo.toml`, `Cargo.lock`, `crates/python/src/auth_detectors.rs`, `crates/python/src/lib.rs`
+- **Learnings for future iterations:**
+  - BasicAuthDetector regex uses RFC 3986 reserved + sub-delimiter chars as exclusion set in character class: `[^:/?#\[\]@!$&'()*+,;=\s]`
+  - Python's `DiscordBotTokenDetector` class name includes "Bot" (not just "DiscordDetector")
+  - GitLab patterns use `(?!\w)` (negative lookahead) — in Rust, convert to `(?:\W|$)` consuming boundary. For patterns WITHOUT capture groups, wrap the token in `(...)` so `regex_analyze_string` returns group 1 (just the token, not the boundary char)
+  - JwtTokenDetector overrides `analyze_string()` to filter through `is_formally_valid()` — uses base64 URL-safe decoding + JSON parse of header/payload. Added `base64` crate for this.
+  - GitHub token patterns have a capture group `(ghp|gho|ghu|ghs|ghr)` — `regex_analyze_string` returns just the prefix (matching Python's `findall` behavior with one group)
+  - PrivateKeyDetector is the simplest — just 8 literal string patterns for PEM/PuTTY headers
+- For nested capture groups in Python regexes (e.g., `((npm_.+)|([A-Fa-f0-9-]{36}))`), convert inner groups to non-capturing `(?:...)` to avoid `regex_analyze_string` yielding duplicate matches
+- For Python patterns using backreferences (`\1`, `\3`) for matching quotes: create separate regex variants per quote type (single, double, backtick) and use `(?P<secret>...)` named groups for extraction
+- KeywordDetector produces duplicate matches when multiple patterns overlap (e.g. `=` matches both equal-signs AND arrow `=>?` patterns) — deduplicate results with HashSet, matching Python's `set()` behavior
+- IpPublicDetector uses lookbehinds + negative lookaheads (unsupported by Rust `regex`). Instead, use custom `analyze_string()` that: (1) matches all IPv4 addresses, (2) filters private ranges, (3) manually checks word/dot boundaries at start/end
+- When porting PyO3 wrappers with identical patterns, use a `macro_rules!` macro (e.g., `py_detector!`) to eliminate boilerplate
+---
+
+## 2026-03-02 - US-008
+- Ported 11 SaaS service detector plugins with full PyO3 bindings
+- Created `crates/engine/src/saas_detectors.rs`: MailchimpDetector, NpmDetector, OpenAIDetector, PypiTokenDetector, SendGridDetector, SlackDetector, SquareOAuthDetector, StripeDetector, TelegramBotTokenDetector, TwilioKeyDetector, IpPublicDetector — 10 implement SecretDetector + RegexBasedDetector, IpPublicDetector implements only SecretDetector with custom analyze_string, 47 unit tests
+- Created `crates/python/src/saas_detectors.rs`: PyO3 wrappers for all 11 detectors using a `py_detector!` macro to reduce boilerplate, with `register()` function
+- Updated `crates/engine/src/lib.rs` and `crates/python/src/lib.rs` to register saas_detectors module
+- Files changed: `crates/engine/src/saas_detectors.rs`, `crates/engine/src/lib.rs`, `crates/python/src/saas_detectors.rs`, `crates/python/src/lib.rs`
+- **Learnings for future iterations:**
+  - NpmDetector regex has nested capture groups `((npm_.+)|([...]{36}))` — inner groups must be non-capturing `(?:...)` in Rust to avoid duplicate matches from `regex_analyze_string`
+  - IpPublicDetector can't use standard `RegexBasedDetector` pattern due to lookbehinds — custom `analyze_string()` with post-match filtering works well
+  - PyO3 wrapper boilerplate (new, secret_type getter, analyze_string, analyze_line, json) is identical across all simple detectors — `macro_rules!` eliminates ~40 lines per detector
+  - SlackDetector uses `(?i)` inline flag for case-insensitive matching (works in Rust regex)
+  - TelegramBotTokenDetector uses `^...$` anchors — only matches if the entire input is the token (line-level matching)
+  - Python class names vary from PRD names: PypiTokenDetector (not PyPITokenDetector), TelegramBotTokenDetector (not TelegramDetector), TwilioKeyDetector (not TwilioDetector)
+---
+
+## 2026-03-02 - US-009
+- Ported KeywordDetector plugin with file-type-aware regex selection and full PyO3 bindings
+- Created `crates/engine/src/keyword_detector.rs`: KeywordDetector struct, FileType enum, determine_file_type(), 10 regex pattern builders (colon, colon_equal, equal_signs, preceded_by, arrow, semicolon, etc.), 5 regex sets (Config, Golang, CommonC, CPlusPlus, QuotesRequired), keyword_exclude filter, 34 unit tests
+- Created `crates/python/src/keyword_detector.rs`: PyO3 wrapper with `keyword_exclude` constructor parameter, analyze_string(), analyze_line(), json(), secret_type getter
+- Updated `crates/engine/src/lib.rs` and `crates/python/src/lib.rs` to register keyword_detector module
+- Files changed: `crates/engine/src/keyword_detector.rs`, `crates/engine/src/lib.rs`, `crates/python/src/keyword_detector.rs`, `crates/python/src/lib.rs`
+- **Learnings for future iterations:**
+  - Python's keyword.py uses backreferences (`\1`, `\3`, `\4`) for matching opening/closing quotes — Rust `regex` doesn't support these. Solution: generate separate patterns for each quote type (single, double, backtick) and use `(?P<secret>...)` named capture groups
+  - Multiple regex patterns in a set can match the same input (e.g., `=` matches both equal-signs and arrow `=>?` patterns). Python deduplicates via `set()` — in Rust, use `HashSet` to deduplicate matched secret strings
+  - Python `QUOTE = r'[\'"\`]'` is single-quote, double-quote, backtick — NOT space
+  - Python `SECRET = r"(?=[^\v\'\"]*)(?=\w+)[^\v\'\"]*[^\v,\'\"\`]"` — note `\v` (vertical tab) used as line break exclusion
+  - DENYLIST contains `contraseña` (Spanish for password) — use literal Unicode `\u{f1}` in Rust, not Python's escaped bytes
+  - KeywordDetector overrides `analyze_line()` (not just `analyze_string()`) to inject file-type-specific regex sets — this is unique among all plugins
+---
+
+## 2026-03-02 - US-010
+- Implemented heuristic filters, allowlist filter, and common file validation filters with full PyO3 bindings
+- Created `crates/engine/src/filters/mod.rs`: Module definition for filters submodule
+- Created `crates/engine/src/filters/heuristic.rs`: 9 heuristic filters (is_sequential_string, is_potential_uuid, is_likely_id_string, is_non_text_file, is_templated_secret, is_prefixed_with_dollar_sign, is_indirect_reference, is_lock_file, is_not_alphanumeric_string, is_swagger_file), IGNORED_FILE_EXTENSIONS set, LOCK_FILES set, 46 unit tests
+- Created `crates/engine/src/filters/allowlist.rs`: is_line_allowlisted with 6 comment syntax types, same-line and nextline pragma variants, YAML-optimized file extension mapping, 18 unit tests
+- Created `crates/engine/src/filters/common.rs`: is_invalid_file, 3 unit tests
+- Created `crates/python/src/filters.rs`: PyO3 bindings for all 12 filter functions with register() pattern
+- Added `once_cell` dependency to engine crate for static Lazy initialization
+- Updated `crates/engine/src/lib.rs` and `crates/python/src/lib.rs` to register filters module
+- Files changed: `Cargo.lock`, `crates/engine/Cargo.toml`, `crates/engine/src/lib.rs`, `crates/engine/src/filters/mod.rs`, `crates/engine/src/filters/heuristic.rs`, `crates/engine/src/filters/allowlist.rs`, `crates/engine/src/filters/common.rs`, `crates/python/src/filters.rs`, `crates/python/src/lib.rs`
+- **Learnings for future iterations:**
+  - Use `once_cell::sync::Lazy` instead of `lazy_static!` — it's in Rust's stdlib plan and more ergonomic
+  - Python's `is_likely_id_string()` takes a `plugin: Optional[BasePlugin]` and checks `isinstance(plugin, RegexBasedDetector)` — Rust version takes a `is_regex_based_plugin: bool` flag instead (avoids trait object complexity)
+  - Python's `is_line_allowlisted()` takes a `CodeSnippet` context object — Rust version takes `previous_line: &str` directly (CodeSnippet not yet ported)
+  - Allowlist pragma patterns: same-line accepts both "allowlist" and "whitelist"; nextline only accepts "allowlist"
+  - Python's swagger regex `r'.*swagger.*'` is NOT case-insensitive despite having `.*` on both sides — matches Python behavior exactly
+  - `\v` (vertical tab) in Python regex maps to `\x0B` in Rust regex for the indirect reference pattern
+  - Filters module is organized as submodule directory (`filters/mod.rs` + `filters/*.rs`) for clean separation
+- `aho-corasick` crate (v1) is used for wordlist filter — efficient multi-pattern substring matching with case-insensitive mode
+- Filter dependency injection in Rust uses explicit `FilterId` enum + `FilterParam` enum + `get_filters_with_parameter()` — no runtime introspection needed
+- Python's `get_caller_path()` introspection is replaced by explicit `FilterId::path()` returning dotted Python-style paths (e.g., `detect_secrets.filters.regex.should_exclude_line`)
+- Regex exclusion filters take compiled `&[Regex]` slices (not settings lookup) — caller is responsible for compiling patterns
+- WordlistFilter uses `AhoCorasick::builder().ascii_case_insensitive(true)` for case-insensitive matching (matching Python's `.lower()` approach)
+---
+
+## 2026-03-03 - US-011
+Session: N/A (Claude Code)
+- Implemented regex-based exclusion filters (should_exclude_line, should_exclude_file, should_exclude_secret) with compile_regexes helper
+- Implemented wordlist-based exclusion filter (WordlistFilter) using Aho-Corasick automaton with case-insensitive matching, file loading, min_length filtering, and SHA1 file hashing
+- Implemented filter dependency injection system (FilterParam enum, FilterId enum with path/injectable_variables, get_filters_with_parameter) matching Python's inject.py + scan.py behavior
+- Created `crates/engine/src/filters/regex_filter.rs`: 3 filter functions + compile_regexes helper, 13 unit tests
+- Created `crates/engine/src/filters/wordlist.rs`: WordlistFilter struct with from_file/from_words constructors, should_exclude_secret method, compute_file_hash utility, 12 unit tests
+- Created `crates/engine/src/filters/registry.rs`: FilterParam enum (5 variants), FilterId enum (16 variants) with path() and injectable_variables(), get_filters_with_parameter(), ALL_FILTERS constant, 14 unit tests
+- Updated `crates/python/src/filters.rs`: PyO3 bindings for should_exclude_line, should_exclude_file, should_exclude_secret, WordlistFilter class, compute_file_hash, get_filters_with_parameter
+- Added `aho-corasick` dependency to engine crate
+- Files changed: `Cargo.lock`, `crates/engine/Cargo.toml`, `crates/engine/src/filters/mod.rs`, `crates/engine/src/filters/regex_filter.rs`, `crates/engine/src/filters/registry.rs`, `crates/engine/src/filters/wordlist.rs`, `crates/python/src/filters.rs`
+- **Learnings for future iterations:**
+  - Python's regex filters look up patterns from `settings.filters[path]['pattern']` via `get_caller_path()` — in Rust, patterns are passed explicitly to avoid global state
+  - Python's wordlist filter uses `pyahocorasick` library — Rust's `aho-corasick` crate is a direct equivalent with builder pattern for options
+  - Python's dependency injection uses `inspect.stack()` and `__code__.co_varnames` — in Rust, explicit enum-based parameter declaration is cleaner and zero-cost
+  - `compute_file_hash()` matches Python's `sha1sum` — reads entire file into memory (could be chunked for large files but matches Python behavior)
+  - WordlistFilter must be `Clone` for PyO3 compatibility — AhoCorasick implements Clone
+  - PyO3 regex filters compile patterns on each call (from Python strings) — for performance-critical paths, cache compiled regexes on the Rust side
+---
+
+## 2026-03-03 - US-012
+Session: N/A (Claude Code)
+- Implemented Settings struct with plugins (HashMap<String, Value>) and filters (HashMap<String, Value>) matching Python's Settings class
+- Implemented configure_plugins(), disable_plugins(), configure_filters(), disable_filters() methods
+- Implemented json() serialization matching Python baseline format: plugins_used sorted by name, filters_used sorted by path, DEFAULT_FILTERS excluded
+- Implemented plugin registry: 27 built-in plugins with factory functions, `simple_plugin!` macro for zero-config detectors, parameterised factories for Base64/Hex/Keyword
+- Implemented global singleton via `Lazy<Mutex<Settings>>` with get_settings()/get_settings_mut()
+- Implemented configure_settings_from_baseline() for loading from baseline JSON dicts
+- Implemented TransientSettingsGuard (RAII) for scoped settings overrides (Rust equivalent of Python's transient_settings context manager)
+- Implemented default_settings() that enables all built-in plugins
+- Created PyO3 bindings: Settings class, get_settings, configure_settings_from_baseline, cache_bust, all_plugin_class_names functions
+- Created `crates/engine/src/settings.rs`: Settings struct + plugin registry + singleton + context managers, 29 unit tests
+- Created `crates/python/src/settings.rs`: PyO3 wrappers with JSON↔Python conversion helpers
+- Updated `crates/engine/src/lib.rs` and `crates/python/src/lib.rs` to register settings module
+- Files changed: `crates/engine/src/settings.rs`, `crates/engine/src/lib.rs`, `crates/python/src/settings.rs`, `crates/python/src/lib.rs`
+- **Learnings for future iterations:**
+  - Python's `@lru_cache(maxsize=1)` singleton maps to Rust's `once_cell::sync::Lazy<Mutex<T>>` — provides thread-safe global access
+  - Python's context managers (`with transient_settings(...)`) map to Rust RAII guards — `TransientSettingsGuard` restores on drop
+  - Plugin registry pattern: `PluginEntry { class_name, _secret_type, factory: fn(&Value) -> Box<dyn SecretDetector> }` — factory takes JSON config
+  - `simple_plugin!` macro eliminates 5-line boilerplate per plugin — only needs class name, secret type, and struct name
+  - Struct names must match exactly: `AWSKeyDetector` (not `AwsKeyDetector`), `OpenAIDetector` (not `OpenAiDetector`)
+  - PyO3 `bool.into_pyobject(py)?` returns `Borrowed` — must use `.to_owned()` before `.into_any().unbind()` to avoid move errors
+  - Settings `json()` method merges three sources: plugin factory output, settings config, and canonical plugin JSON — matching Python's `{**settings, **plugin.json()}` pattern
+  - DEFAULT_FILTERS (is_invalid_file, is_non_text_file) are always present but excluded from `filters_used` output — matching Python behavior
+  - INITIAL_FILTERS (12 total) include all heuristic + allowlist filters enabled by default on `Settings::new()`
+---
+
+## 2026-03-03 - US-013
+Session: N/A (Claude Code)
+- Implemented SecretsCollection struct with HashMap<String, HashSet<PotentialSecret>> data storage
+- Implemented load_from_baseline() for loading from baseline JSON dicts (results key)
+- Implemented merge() preserving is_secret/is_verified from old baselines (only overrides when current is None/false)
+- Implemented trim() with two-phase algorithm: Phase 1 intersects scanned results (updating line numbers), Phase 2 preserves unscanned files and removes scanned-but-empty files
+- Implemented json() serialization matching Python's output: sorted filenames, secrets sorted by (line_number, secret_hash, secret_type)
+- Implemented SecretsIterator yielding (filename, &PotentialSecret) tuples in sorted order
+- Implemented eq_loose() (default PartialEq) and eq_strict() for loose and strict equality
+- Implemented subtract() for set subtraction (self - other)
+- Implemented len(), is_empty(), files(), entry(), get(), add_secret() helper methods
+- Created `crates/engine/src/secrets_collection.rs`: 42 unit tests covering all methods
+- Created `crates/python/src/secrets_collection.rs`: PyO3 wrapper with __getitem__, __setitem__, __iter__, __len__, __bool__, __eq__, __sub__, merge(), trim(), json(), load_from_baseline(), add_secret(), exactly_equals()
+- Updated `crates/engine/src/lib.rs` and `crates/python/src/lib.rs` to register secrets_collection module
+- Files changed: `crates/engine/src/secrets_collection.rs`, `crates/engine/src/lib.rs`, `crates/python/src/secrets_collection.rs`, `crates/python/src/lib.rs`
+- **Learnings for future iterations:**
+  - HashSet doesn't allow mutable access to elements by design — for merge(), extract into HashMap by identity key, mutate, then rebuild the HashSet
+  - Python's `defaultdict(set)` maps to `HashMap::entry().or_default()` in Rust
+  - SecretsCollection.json() must iterate via the sorted iterator to produce sorted output — don't iterate self.data directly
+  - trim() has a subtle edge case: files that were scanned but had zero secrets should be removed (they're in filelist but not in scanned_results.files())
+  - PyO3 `__iter__` returning a list is sufficient for Python iteration compatibility — no need for a custom iterator protocol
+  - `json_value_to_py()` helper needs to handle nested arrays and objects recursively for the results dict format
+  - The benign `cdylib` warning on musl targets persists — it's a known rustc issue and doesn't affect maturin builds
+---
+
+## 2026-03-03 - US-014
+Session: N/A (Claude Code)
+- Implemented file scanning pipeline with full PyO3 bindings
+- Created `crates/engine/src/scan.rs`: `scan_file()`, `scan_line()`, `scan_diff()`, `get_files_to_scan()` functions, plus internal helpers: `ScanFilterContext`, `CodeSnippet`, `process_line_based_plugins()`, `is_file_filtered_out()`, `is_line_filtered_out()`, `is_secret_filtered_out()`, diff parser (`parse_diff`, `parse_hunk_header`), git-aware file discovery (`get_git_tracked_files`, `get_all_files`), 27 unit tests
+- Created `crates/python/src/scan.rs`: PyO3 wrappers for `scan_file`, `scan_line`, `scan_diff`, `get_files_to_scan` with `register()` pattern
+- Updated `crates/engine/src/lib.rs` and `crates/python/src/lib.rs` to register scan module
+- Files changed: `crates/engine/src/scan.rs`, `crates/engine/src/lib.rs`, `crates/python/src/scan.rs`, `crates/python/src/lib.rs`
+- **Learnings for future iterations:**
+  - Diff scanning must skip `is_invalid_file` filter — files referenced in a diff may not exist locally
+  - `ScanFilterContext` pattern: capture all filter config (compiled regexes, wordlist, active filter IDs) once at scan start to avoid repeated global settings lock acquisition during iteration
+  - `is_regex_based()` approximation: check `plugin.secret_type()` for "High Entropy" or "Secret Keyword" — these are the only non-regex-based plugin categories
+  - `CodeSnippet._start_line` is reserved for future use but currently unused — prefixed with underscore to suppress dead_code warning
+  - Unified diff parsing: `+++ b/path` identifies target file, `@@ -old,n +new,m @@` gives starting line number, `+` prefix = added line, `-` prefix = removed (skipped), other = context (line counter increments)
+  - `get_files_to_scan()` uses principle of least surprise: direct file paths are always included regardless of git tracking status
+  - All 469 engine tests pass including 27 new scan tests
+---
+
+## 2026-03-03 - US-015
+Session: N/A (Claude Code)
+- Implemented baseline management module with full PyO3 bindings
+- Created `crates/engine/src/baseline.rs`: `BASELINE_VERSION` constant (1.5.0), `SemVer` struct for version comparison, `BaselineError` enum, `create()`, `load()`, `load_from_file()`, `format_for_output()`, `save_to_file()`, `upgrade()` with v0.12/v1.0/v1.1 migration functions, `time_now_utc()` for timestamp generation, 31 unit tests
+- Created `crates/python/src/baseline.rs`: PyO3 wrappers for `baseline_create`, `baseline_load`, `baseline_load_from_file`, `baseline_format_for_output`, `baseline_save_to_file`, `baseline_upgrade`, `baseline_version` with `register()` pattern
+- Enabled `serde_json` `preserve_order` feature in engine Cargo.toml for correct JSON key ordering
+- Updated `crates/engine/src/lib.rs` and `crates/python/src/lib.rs` to register baseline module
+- Files changed: `Cargo.lock`, `crates/engine/Cargo.toml`, `crates/engine/src/baseline.rs`, `crates/engine/src/lib.rs`, `crates/python/src/baseline.rs`, `crates/python/src/lib.rs`
+- **Learnings for future iterations:**
+  - `BASELINE_VERSION` (1.5.0) must be separate from crate `VERSION` (0.1.0) — the baseline format version matches Python detect-secrets for compatibility, while the crate version tracks the Rust implementation
+  - `serde_json` `preserve_order` feature uses `IndexMap` instead of `BTreeMap` — keys maintain insertion order, critical for matching Python's JSON output format
+  - `get_files_to_scan()` returns relative paths (relative to root) — `create()` must resolve them back to absolute paths for `scan_file()` to read from disk, then store the relative path in the secret
+  - `let _ = expr` in Rust drops the value immediately — `let _guard = expr` keeps it alive until end of scope (critical for `TransientSettingsGuard`)
+  - Never use `/tmp` as root in tests with `get_files_to_scan()` — it recursively walks all files causing hangs. Use a dedicated empty temp directory
+  - Upgrade functions are applied sequentially: v0.12 (exclude_regex → exclude dict), v1.0 (filters migration, entropy arg rename, custom plugin migration), v1.1 (new default filters)
+  - `custom_plugin_paths` migration from v1.0 requires Python introspection — in Rust, we just remove the key (best-effort)
+  - Howard Hinnant's `civil_from_days` algorithm used for UTC timestamp generation without external datetime crate
+  - All 494 engine tests pass including 31 new baseline tests
+---
+
+## 2026-03-03 - US-016
+Session: N/A (Claude Code)
+- Implemented parallel file scanning with rayon thread pool
+- Created `ParallelScanContext` struct that captures settings (plugins via `Arc<Vec<Box<dyn SecretDetector + Send + Sync>>>` and filter context via `Arc<ScanFilterContext>`) once before scanning — avoids repeated global mutex acquisition and eliminates serialization overhead
+- Created `scan_files()` function in `crates/engine/src/scan.rs` that uses `rayon::par_iter()` for parallel file scanning with configurable thread count (defaults to `num_cpus`)
+- Thread pool creation: `rayon::ThreadPoolBuilder::new().num_threads(n).build()` for custom thread counts; `None` uses rayon's global thread pool
+- Added `SecretsCollection.scan_files(filenames, num_threads)` method that calls `scan::scan_files()` and stores results
+- PyO3 bindings: `scan_files()` function and `SecretsCollection.scan_files()` method both use `py.allow_threads()` to release GIL during Rust-side scanning — zero GIL contention
+- Added 9 unit tests: empty list, single file, multiple files parallel, parallel vs sequential consistency, custom thread count, nonexistent files, mixed valid/invalid files, SecretsCollection integration (parallel and empty)
+- Files changed: `Cargo.lock`, `crates/engine/Cargo.toml`, `crates/engine/src/scan.rs`, `crates/engine/src/secrets_collection.rs`, `crates/python/src/scan.rs`, `crates/python/src/secrets_collection.rs`
+- **Learnings for future iterations:**
+  - `ParallelScanContext` pattern: capture all settings into `Arc` wrappers ONCE before parallel scan — workers share in-memory, no mutex contention, no serialization
+  - `rayon::ThreadPoolBuilder::new().num_threads(n).build()` creates an isolated pool; `None` uses rayon's global pool (both work, but isolated pool respects user's thread count)
+  - `py.allow_threads(|| ...)` releases the GIL for the duration of the closure — critical for PyO3 bindings of CPU-bound parallel code
+  - Pre-existing test flakiness: tests using `default_settings()` fight over the global settings mutex when run in parallel (`cargo test`). Running with `--test-threads=1` confirms all tests pass. Not related to rayon changes.
+  - `rayon::par_iter()` + `filter_map()` + `collect::<HashMap>()` is a clean pattern for parallel map-reduce
+  - All 503 engine tests pass (9 new) including parallel vs sequential consistency test
+---
+
+## 2026-03-03 - US-017
+Session: N/A (Claude Code)
+- Implemented Python custom plugin support via PyO3 callback with full integration
+- **Engine crate - settings.rs changes:**
+  - Added `ExternalPluginFactory` type alias: `Arc<dyn Fn(&Value) -> Box<dyn SecretDetector + Send + Sync> + Send + Sync>`
+  - Added `EXTERNAL_PLUGIN_REGISTRY` global static (`Lazy<Mutex<HashMap<String, ExternalPluginFactory>>>`)
+  - Added `register_external_plugin()`, `unregister_external_plugin()`, `clear_external_plugins()`, `get_external_plugin_names()`
+  - Added `get_mapping_from_secret_type_to_class()` returning both built-in and external plugin mappings
+  - Updated `get_plugins()` to check external registry (with proper lock ordering: clone plugin entries first, drop settings lock, then acquire external registry lock)
+  - Added 6 unit tests
+- **Engine crate - scan.rs changes:**
+  - Added `FilterPhase` enum (File, Line, Secret) for phase-based filter dispatching
+  - Added `ExternalFilterFn` type alias and `ExternalFilter` struct
+  - Added `EXTERNAL_FILTER_REGISTRY` global static
+  - Added `register_external_filter()`, `clear_external_filters()` functions
+  - Updated `ScanFilterContext` with external_file_filters, external_line_filters, external_secret_filters
+  - Updated `is_secret_filtered_out()` signature to include `filename: &str` parameter
+  - Updated all 3 callers (process_line_based_plugins, scan_line, scan_diff) to pass filename
+  - Added 3 unit tests
+- **Python crate - custom_plugins.rs (NEW):**
+  - `PyCustomPlugin` struct implementing `SecretDetector`: cached_secret_type at construction, `analyze_string()` via `Python::with_gil()`, `analyze_line()` with Python fallback
+  - `NoOpPlugin` for error recovery when custom plugin construction fails
+  - `create_custom_plugin_factory()` creates `ExternalPluginFactory` capturing Python class
+  - `find_plugin_classes_in_module()` scans Python module for valid plugin classes (isclass + analyze_string + concrete secret_type)
+  - `import_file_as_module()` uses `importlib.util` for dynamic file loading
+  - `determine_filter_phase()` uses `inspect.signature` to determine File/Line/Secret phase
+  - `create_external_filter()` wraps Python filter function with GIL-acquiring closure
+  - PyO3 functions: `load_plugins_from_file`, `load_plugin_from_import_path`, `register_custom_plugin`, `clear_custom_plugins`, `load_custom_filter_from_file`, `load_custom_filter_from_import`, `clear_custom_filters`, `get_mapping_from_secret_type_to_class`
+  - `register()` module registration function
+- Files changed: `crates/engine/src/settings.rs`, `crates/engine/src/scan.rs`, `crates/python/src/custom_plugins.rs`, `crates/python/src/lib.rs`
+- **Learnings for future iterations:**
+  - External plugin registry pattern bridges engine (pure Rust, no PyO3) with python crate — factories as `Arc<dyn Fn>` stored in global `Lazy<Mutex<HashMap>>`
+  - GIL management for rayon parallel scanning: `Python::with_gil()` inside closures that run on rayon threads
+  - Lock ordering matters: in `get_plugins()`, clone plugin entries and drop settings lock BEFORE acquiring external registry lock to avoid potential deadlocks
+  - PyO3 `try_iter()` replaces deprecated `iter()` for iterating Python iterables (generators, lists)
+  - Python `odict_keys` (from `inspect.signature.parameters.keys()`) cannot be directly extracted as `Vec<String>` — must convert to list first via `builtins.list()`
+  - `importlib.util.spec_from_file_location` + `module_from_spec` + `loader.exec_module` is the standard Python dynamic module loading pattern
+  - `inspect.signature` provides parameter names for determining filter phase (filename/line/secret params → File/Line/Secret phase)
+  - `json_value_to_py_simple()` helper needed for converting `serde_json::Value` config to Python objects for custom plugin constructors
+  - All 512 engine tests pass including 9 new tests (6 settings + 3 scan)
+---
+
+## 2026-03-03 - US-018
+Session: N/A (Claude Code)
+- Implemented `detect-secrets scan` CLI command with all required flags
+- Implemented `detect-secrets-hook` pre-commit hook entry point
+- Registered both entry points in pyproject.toml via `[project.scripts]`
+- Converted to maturin mixed Python/Rust project layout (`python-source = "python"`)
+- **Rust changes (crates/python/src/settings.rs):**
+  - Added 7 global settings mutation functions: `global_disable_plugins`, `global_disable_filters`, `global_set_filter`, `global_set_plugin_limit`, `global_get_plugin_names`, `global_initialize_all_plugins`, `global_clear_plugins`
+  - All modify the global `GLOBAL_SETTINGS` singleton directly (equivalent to Python's `get_settings().method()`)
+- **Rust changes (crates/python/src/secrets_collection.rs):**
+  - Added `scan_file(filename)` method on `PySecretsCollection` for single-file scanning (used by hook)
+- **Python CLI (python/detect_secrets_rs/cli/main.py):**
+  - `detect-secrets scan` with argparse: `--string`, `--all-files`, `--baseline`, `--list-all-plugins`, `--force-use-all-plugins`, `--slim`, `--disable-plugin`, `--base64-limit`, `--hex-limit`, `--no-verify`, `--only-verified`, `--exclude-lines/files/secrets`, `--word-list`, `--filter`, `--disable-filter`, `-C` (custom root), `-c` (cores)
+  - Settings initialization: baseline loading → force-use-all-plugins → plugin overrides → filter overrides
+  - String scanning: maps secret_type → class_name via `get_mapping_from_secret_type_to_class()`
+- **Python CLI (python/detect_secrets_rs/cli/hook.py):**
+  - Pre-commit hook: scans files, compares with baseline, reports new secrets
+  - Exit codes: 0 (clean), 1 (secrets found), 3 (baseline updated)
+  - Pretty-print diagnostics with mitigation suggestions
+  - Baseline unstaged file check via `git diff --name-only`
+  - `should_update_baseline()` with trim and version comparison
+- Files changed: `crates/python/src/settings.rs`, `crates/python/src/secrets_collection.rs`, `pyproject.toml`, `python/detect_secrets_rs/__init__.py`, `python/detect_secrets_rs/cli/__init__.py`, `python/detect_secrets_rs/cli/main.py`, `python/detect_secrets_rs/cli/hook.py`
+- **Learnings for future iterations:**
+  - maturin mixed project: `python-source = "python"` in pyproject.toml, `__init__.py` does `from .detect_secrets_rs import *`
+  - Global settings functions are needed because PyO3's `get_settings()` returns a clone, not a reference — CLI needs direct mutation
+  - `scan_line()` returns PotentialSecret with `secret_type` (e.g., "AWS Access Key"), not class name — use `get_mapping_from_secret_type_to_class()` for display mapping
+  - PySecretsCollection `__iter__` returns a PyList (not iterator) — can't unpack directly in Python `for x, y in coll:`. Use `coll.files` + `coll[filename]` pattern instead
+  - `--baseline` flag for scan: if file exists, load/merge/save; if not, create new baseline file
+  - Pre-commit hook `--baseline` compares using set subtraction (`secrets - baseline`), which requires matching filenames (relative paths)
+  - All 512 engine tests pass; CLI tested: --version, --help, scan, scan --string, scan --list-all-plugins, scan --baseline, scan --disable-plugin, hook (with/without baseline, JSON output)
+---
+
+## 2026-03-03 - US-019
+Session: N/A (Claude Code)
+- Implemented `detect-secrets audit` CLI command with full interactive audit, report, stats, and diff modes
+- **Python CLI (python/detect_secrets_rs/cli/audit.py - NEW):**
+  - Interactive audit mode: displays secrets one at a time with file context (±2 lines), ANSI-highlighted target line, secret value highlighting
+  - User prompts: (y)es = false positive, (n)o = true positive, (s)kip = keep unlabelled, (b)ack = previous secret, (q)uit = exit
+  - `--report` flag: JSON report with category (VERIFIED_TRUE/VERIFIED_FALSE/UNVERIFIED), filename, lines, secrets, types
+  - `--report --only-real`: filters to true positives + unverified only
+  - `--report --only-false`: filters to false positives only
+  - `--stats` flag: per-plugin statistics with true positives, false positives, unknown, precision, recall
+  - `--stats --json`: machine-readable JSON statistics output
+  - `--diff` flag: compare two baselines, showing ADDED/REMOVED secrets with interactive navigation
+  - Secret recovery: re-scans target line with `rs.scan_line()` to find matching secret hash
+  - Baseline persistence: saves labelled results back to baseline JSON on exit
+  - Error handling: invalid baseline files, missing files, missing line numbers
+  - Exit codes: 0 on success (matching Python behavior)
+- **Python CLI (python/detect_secrets_rs/cli/main.py - MODIFIED):**
+  - Added `audit` subparser with all flags: `--diff`, `--stats`, `--json`, `--report`, `--only-real`, `--only-false`
+  - Wired `handle_audit(args)` dispatch in `main()`
+- Files changed: `python/detect_secrets_rs/cli/audit.py` (NEW), `python/detect_secrets_rs/cli/main.py`
+- **Learnings for future iterations:**
+  - Audit is purely Python CLI code — no Rust/PyO3 changes needed, just calls `rs.baseline_load_from_file()`, `rs.scan_line()`, and writes JSON directly
+  - Python's interactive audit asks "Should this string be committed?" — "yes" means false positive (safe to commit), "no" means true positive (real secret)
+  - The `_recover_secret()` function re-runs `rs.scan_line()` on the target line and matches by `secret_hash` — this is how the original Python version works too
+  - `os.system("clear")` works for terminal clearing; `platform.system() == "Windows"` check for cross-platform support
+  - Baseline JSON is read/written directly with Python's `json` module rather than going through Rust `baseline_save_to_file()` — simpler for audit's in-place modifications
+  - All 512 engine tests pass unchanged; CLI tested: audit --help, audit --stats, audit --stats --json, audit --report, audit --report --only-real, audit --report --only-false, audit --diff, interactive audit with y/n/q
+---
+
+## 2026-03-03 - US-020
+Session: N/A (Claude Code)
+- Ported and created comprehensive test suite with 321 Python tests + fixed 512 Rust tests (was 5 flaky)
+- **Rust test fixes (settings serialization):**
+  - Added `TEST_MUTEX` and `serial_test()` to `crates/engine/src/settings.rs` — prevents parallel test contention over global settings singleton
+  - Added `let _serial = settings::serial_test();` to all 20+ tests in `scan.rs`, `baseline.rs`, `secrets_collection.rs`, `settings.rs` that use `default_settings()` or `cache_bust()`
+  - All 512 Rust engine tests now pass consistently (was 5 flaky failures)
+- **Python test suite (tests/ directory - 4 new files, 321 tests):**
+  - `tests/conftest.py`: pytest config with `reset_settings` autouse fixture
+  - `tests/test_plugins.py` (178 tests): All 27 plugins tested with exact Python test data — AWSKeyDetector, AzureStorageKeyDetector, ArtifactoryDetector, BasicAuthDetector, CloudantDetector, DiscordBotTokenDetector, GitHubTokenDetector, GitLabTokenDetector, HexHighEntropyString, Base64HighEntropyString, IbmCloudIamDetector, IbmCosHmacDetector, JwtTokenDetector, KeywordDetector, MailchimpDetector, NpmDetector, OpenAIDetector, PrivateKeyDetector, PypiTokenDetector, SendGridDetector, SlackDetector, SoftlayerDetector, SquareOAuthDetector, StripeDetector, TelegramBotTokenDetector, TwilioKeyDetector, IPPublicDetector + JSON output + secret_type verification
+  - `tests/test_filters.py` (86 tests): All heuristic filters (is_sequential_string, is_potential_uuid, is_likely_id_string, is_templated_secret, is_prefixed_with_dollar_sign, is_indirect_reference, is_lock_file, is_not_alphanumeric_string, is_swagger_file, is_non_text_file), allowlist filter (same-line + nextline + backwards compat), regex filters (exclude_line, exclude_file, exclude_secret), wordlist filter, common filters
+  - `tests/test_baseline.py` (13 tests): baseline version, round-trip (create/save/load), slim mode, key ordering, upgrade (v0.12, v1.0, v1.1), load from dict/file, SecretsCollection operations
+  - `tests/test_integration.py` (44 tests): end-to-end scan_file (AWS, private key, multiple secrets, allowlisted, nonexistent), scan_line, scan_diff, scan_files (parallel, parallel-vs-sequential), pipeline filtering, PotentialSecret, entropy, settings, full workflow
+- Files changed: `crates/engine/src/settings.rs`, `crates/engine/src/scan.rs`, `crates/engine/src/baseline.rs`, `crates/engine/src/secrets_collection.rs`, `tests/conftest.py` (NEW), `tests/test_plugins.py` (NEW), `tests/test_filters.py` (NEW), `tests/test_baseline.py` (NEW), `tests/test_integration.py` (NEW)
+- **Learnings for future iterations:**
+  - Global settings singleton (`GLOBAL_SETTINGS`) causes test flakiness in parallel — use `serial_test()` mutex for ALL tests that modify global state
+  - PyO3 API signatures differ from intuitive parameter order: `is_line_allowlisted(filename, line, previous_line)`, `KeywordDetector.analyze_line(filename, line, line_number)`, `WordlistFilter(wordlist_filename, min_length)`
+  - `is_templated_secret()` takes the SECRET value (not the full line) — checks for `{...}`, `<...>`, `${...}` wrappers
+  - KeywordDetector "false positive" filtering (e.g. "somefakekey", "${link}") happens at the scan pipeline level, not in `analyze_line()` — test at integration level
+  - GitLab CI/CD token regex has optional capture group `([0-9a-fA-F]{2}_)?` — `regex_analyze_string` returns capture group value, so tokens without hex prefix return empty match
+  - `get_filters_with_parameter(active_filter_paths, required_params)` takes two list arguments
+  - All 512 Rust + 321 Python = 833 total tests pass consistently
+---
+
+## 2026-03-03 - US-021
+Session: N/A (Claude Code)
+- Ran benchmark suite against Rust implementation via PyO3 compatibility shim
+- **Compatibility shim (benchmark/compat_rs/ - NEW directory):**
+  - Created `detect_secrets` package shim that maps Python `detect_secrets.*` imports to `detect_secrets_rs` Rust bindings
+  - `__init__.py`, `__version__.py`, `settings.py` (default_settings context manager)
+  - `plugins/`: aws, basic_auth, github_token, high_entropy_strings, jwt, keyword, private_key, slack, stripe
+  - `core/`: scan.py, baseline.py, secrets_collection.py
+  - Zero code changes to benchmark modules — sys.path manipulation selects backend
+- **Benchmark infrastructure modifications:**
+  - `benchmark/__main__.py`: Added `--backend` flag (python/rust) with `_setup_backend()` for sys.path manipulation
+  - `benchmark/results.py`: Added `backend` parameter to `build_output()`/`save_results()` and metadata
+- **Performance optimizations applied:**
+  - KeywordDetector: Moved regex compilation from per-call to `Lazy` statics (5 pattern groups) — 845x improvement (194s → 0.23s for 1000 lines)
+  - baseline::create(): Changed from sequential to parallel scanning via `scan_files()` with rayon
+  - All detector plugins: Added `Lazy` static regex caching for denylist patterns across 4 files (cloud_detectors, auth_detectors, saas_detectors, high_entropy_strings) — 28 static regex caches total
+- **Benchmark results (Rust vs Python, mean times):**
+  - Entropy: 2.5-10x faster (base64_small=10x, hex_small=7.9x, base64_medium=4.8x, base64_large=2.5x)
+  - Regex: 1.5-8x faster (KeywordDetector_miss=8x, PrivateKeyDetector=6-8x, AWSKeyDetector=2.1x, SlackDetector=2.4x)
+  - Scan file: 1.4-2.2x faster (py_large=2.2x, js_large=1.8x, env_small=2.1x)
+  - Baseline merge/trim: 13-37x faster (merge_small=37x, trim_large=20x)
+  - Baseline deserialize: ~1x (small 2.3x faster, large 0.7x — FFI overhead)
+  - Baseline serialize: mixed (small 2.4x faster, large 0.5x — PyO3 dict conversion overhead)
+  - Scan repo: Invalid comparison — Python's create() returns lazy SecretsCollection (generators), Rust scans eagerly
+- **Performance analysis:**
+  - PyO3 FFI overhead (~1-2μs per call) limits per-call speedups for fine-grained operations
+  - Large-string entropy shows diminishing returns (FFI overhead becomes smaller fraction of total time)
+  - scan_file speedup bounded by per-line Python→Rust→Python round-trips
+  - Baseline merge/trim show best speedups (>13x) — bulk operations amortize FFI overhead
+  - Native Rust CLI (no PyO3 bridge) would achieve full speedup without FFI cost
+- Files changed: `crates/engine/src/keyword_detector.rs`, `crates/engine/src/baseline.rs`, `crates/engine/src/cloud_detectors.rs`, `crates/engine/src/auth_detectors.rs`, `crates/engine/src/saas_detectors.rs`, `crates/engine/src/high_entropy_strings.rs`, `crates/python/src/high_entropy_strings.rs`, `crates/python/src/secrets_collection.rs`, `benchmark/__main__.py`, `benchmark/results.py`, `benchmark/compat_rs/` (NEW directory), `benchmark/results_python.json` (NEW), `benchmark/results_rust.json` (NEW)
+- All 512 Rust tests pass; cargo clippy clean; cargo fmt clean
+---

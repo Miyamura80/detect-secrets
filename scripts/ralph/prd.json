@@ -1,0 +1,390 @@
+{
+  "project": "detect-secrets-rs",
+  "branchName": "ralph/detect-secrets-rs",
+  "description": "Rust-backed drop-in replacement for Yelp/detect-secrets with PyO3 bindings, targeting 10-50x speedup",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Set up Rust workspace with PyO3 and maturin",
+      "description": "As a developer, I need the project scaffolding so I can start implementing the Rust core.",
+      "acceptanceCriteria": [
+        "Cargo.toml workspace with two crates: crates/engine (pure Rust) and crates/python (PyO3 bindings)",
+        "pyproject.toml with maturin build backend targeting detect_secrets_rs package",
+        "crates/engine/src/lib.rs exists with a placeholder pub fn",
+        "crates/python/src/lib.rs exists with a #[pymodule] that exposes a version() function",
+        "maturin develop builds successfully",
+        "import detect_secrets_rs; detect_secrets_rs.version() works from Python",
+        "cargo test passes (even if only a placeholder test)",
+        "Build/lint passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Implement PotentialSecret data model",
+      "description": "As a developer, I need the core secret data structure to store and compare scan results.",
+      "acceptanceCriteria": [
+        "Rust struct PotentialSecret with fields: secret_type, filename, secret_hash (SHA1), line_number, is_secret, is_verified",
+        "hash_secret(secret: &str) -> String using SHA1 hex digest",
+        "secret_value kept in memory but excluded from serialization",
+        "Equality based on (filename, secret_hash, secret_type) matching Python's fields_to_compare",
+        "Implements Hash + Eq for use in HashSet",
+        "JSON serialization matching Python's PotentialSecret.json() output format",
+        "load_secret_from_dict() deserialization from baseline JSON dict",
+        "PyO3 class with all methods exposed to Python",
+        "Unit tests for hashing, equality, and JSON round-trip",
+        "Build/lint passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Implement Shannon entropy calculation",
+      "description": "As a user scanning files, I want entropy detection to be fast so that large repos scan in seconds.",
+      "acceptanceCriteria": [
+        "calculate_shannon_entropy(data: &str, charset: &str) -> f64 in crates/engine",
+        "Exposed to Python via PyO3",
+        "Produces identical results to Python's HighEntropyStringsPlugin.calculate_shannon_entropy()",
+        "HexHighEntropyString numeric-only reduction path (int(data) branch) reimplemented",
+        "Unit tests comparing output against known Python values for Base64 and Hex charsets",
+        "Build/lint passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Implement regex-based plugin framework traits",
+      "description": "As a developer, I need a Rust trait system for plugins so all built-in plugins can be ported.",
+      "acceptanceCriteria": [
+        "trait SecretDetector with fn secret_type() -> &str and fn analyze_string(input: &str) -> Vec<PotentialSecret>",
+        "trait RegexBasedDetector: SecretDetector with fn denylist() -> &[Regex]",
+        "Default analyze_string implementation iterates denylist and collects matches",
+        "RegexBasedDetector handles tuple captures (named groups) like Python originals",
+        "build_assignment_regex() static helper ported from Python",
+        "PyO3 wrapper module that can expose any plugin as a Python class matching BasePlugin interface",
+        "At least one trivial test plugin implemented to validate the framework",
+        "Build/lint passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Port high-entropy string plugins",
+      "description": "As a user, I want entropy-based secret detection so high-entropy strings are flagged.",
+      "acceptanceCriteria": [
+        "Base64HighEntropyString plugin: charset, threshold, quoted-string regex, eager search mode",
+        "HexHighEntropyString plugin: charset, threshold, numeric-only reduction path",
+        "Both plugins implement SecretDetector trait",
+        "Both plugins exposed to Python via PyO3 matching original class interface",
+        "Unit tests verifying identical matches to Python originals for known test inputs",
+        "Build/lint passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Port regex plugins - cloud and infrastructure detectors",
+      "description": "As a user, I want cloud provider secret detection so AWS/Azure/IBM keys are caught.",
+      "acceptanceCriteria": [
+        "AWSKeyDetector implemented with denylist matching Python original",
+        "AzureStorageKeyDetector implemented with denylist matching Python original",
+        "ArtifactoryDetector implemented with denylist matching Python original",
+        "CloudantDetector implemented with denylist matching Python original",
+        "IBMCloudIAM implemented with denylist matching Python original",
+        "IBMCosHmac implemented with denylist matching Python original",
+        "SoftLayerDetector implemented with denylist matching Python original",
+        "All implement SecretDetector trait and are exposed via PyO3",
+        "Unit tests for each plugin with known match/miss inputs",
+        "Build/lint passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Port regex plugins - auth and token detectors",
+      "description": "As a user, I want auth token detection so leaked credentials are caught.",
+      "acceptanceCriteria": [
+        "BasicAuthDetector implemented with denylist matching Python original",
+        "DiscordDetector implemented with denylist matching Python original",
+        "GitHubTokenDetector implemented with denylist matching Python original",
+        "GitLabTokenDetector implemented with denylist matching Python original",
+        "JwtTokenDetector implemented with denylist matching Python original",
+        "PrivateKeyDetector implemented with denylist matching Python original",
+        "All implement SecretDetector trait and are exposed via PyO3",
+        "Unit tests for each plugin with known match/miss inputs",
+        "Build/lint passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Port regex plugins - SaaS service detectors",
+      "description": "As a user, I want SaaS API key detection so third-party service keys are caught.",
+      "acceptanceCriteria": [
+        "MailchimpDetector implemented with denylist matching Python original",
+        "NpmDetector implemented with denylist matching Python original",
+        "OpenAIDetector implemented with denylist matching Python original",
+        "PyPITokenDetector implemented with denylist matching Python original",
+        "SendgridDetector implemented with denylist matching Python original",
+        "SlackDetector implemented with denylist matching Python original",
+        "SquareOAuthDetector implemented with denylist matching Python original",
+        "StripeDetector implemented with denylist matching Python original",
+        "TelegramDetector implemented with denylist matching Python original",
+        "TwilioDetector implemented with denylist matching Python original",
+        "IpPublicDetector implemented with denylist matching Python original",
+        "All implement SecretDetector trait and are exposed via PyO3",
+        "Unit tests for each plugin with known match/miss inputs",
+        "Build/lint passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Port KeywordDetector plugin",
+      "description": "As a user, I want keyword-based secret detection with file-type-aware regex selection.",
+      "acceptanceCriteria": [
+        "KeywordDetector implemented with FOLLOWED_BY_XXX regex patterns matching Python original",
+        "REGEX_BY_FILETYPE mapping ported (different regexes for .cls, .java, .py, .go, etc.)",
+        "DENYLIST keyword list matches Python original exactly",
+        "analyze_line() method uses correct regex based on filename extension",
+        "Plugin implements SecretDetector trait and is exposed via PyO3",
+        "Unit tests for multiple file types confirming identical matches to Python",
+        "Build/lint passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Implement heuristic and allowlist filters",
+      "description": "As a user with filtering rules, I need heuristic filters to reduce false positives.",
+      "acceptanceCriteria": [
+        "All heuristic filters ported: is_sequential_string, is_potential_uuid, is_likely_id_string, is_templated_secret, is_prefixed_with_dollar_sign, is_indirect_reference, is_lock_file, is_not_alphanumeric_string, is_swagger_file",
+        "Allowlist filter: is_line_allowlisted with pragma comment detection",
+        "is_invalid_file and is_non_text_file default filters",
+        "Each filter function has matching signature to Python original",
+        "All filters exposed via PyO3",
+        "Unit tests for each filter with known inputs",
+        "Build/lint passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Implement regex and wordlist filters",
+      "description": "As a user, I need regex-based and wordlist-based filtering for custom exclusion rules.",
+      "acceptanceCriteria": [
+        "should_exclude_line(line, regex) filter implemented",
+        "should_exclude_file(filename, regex) filter implemented",
+        "should_exclude_secret(secret, regex) filter implemented",
+        "Wordlist filter: should_exclude_secret with file loading from wordlist path",
+        "Filter dependency injection: filters declare which parameters they accept (filename, line, secret, context, plugin)",
+        "get_filters_with_parameter(*params) returns filters matching minimum parameter set",
+        "All filters exposed via PyO3",
+        "Unit tests for regex and wordlist filters",
+        "Build/lint passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Implement Settings and configuration system",
+      "description": "As a user, I need my existing .secrets.baseline configuration to work unchanged.",
+      "acceptanceCriteria": [
+        "Settings struct with plugins_used dict and filters_used dict",
+        "configure_plugins(config) accepts [{name: str, **kwargs}] format",
+        "configure_filters(config) accepts [{path: str, **kwargs}] format",
+        "default_settings() context manager enables all plugins + default filters",
+        "transient_settings(config) context manager for temporary override",
+        "get_settings() singleton with cache busting",
+        "configure_settings_from_baseline(baseline_dict) loads from baseline JSON",
+        "Settings JSON output matches Python format exactly",
+        "PyO3 class exposed to Python",
+        "Build/lint passes"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Implement SecretsCollection with merge and trim",
+      "description": "As a user managing baselines, I need collection operations to update my baseline files.",
+      "acceptanceCriteria": [
+        "Rust struct SecretsCollection with data: HashMap<String, HashSet<PotentialSecret>>",
+        "scan_file(filename) method that runs all plugins and filters on a file",
+        "merge(old_results) preserves is_secret/is_verified from old, updates with new",
+        "trim(scanned_results, filelist) performs set intersection + stale entry removal",
+        "json() produces output identical to Python's SecretsCollection.json()",
+        "load_from_baseline(baseline_dict) reconstructs from JSON",
+        "Iterator yields (filename, secret) tuples sorted by line number",
+        "PyO3 class with __eq__, __sub__, __len__, __bool__ operators matching Python",
+        "Build/lint passes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Implement file scanning pipeline",
+      "description": "As a user, I want to scan files for secrets with full plugin and filter application.",
+      "acceptanceCriteria": [
+        "scan_file(filename) -> Vec<PotentialSecret> full pipeline: read, iterate lines, apply plugins, apply filters",
+        "scan_line(line) -> Vec<PotentialSecret> for adhoc string scanning",
+        "scan_diff(diff) -> Vec<PotentialSecret> for unified diff parsing",
+        "get_files_to_scan(paths, should_scan_all_files, root) with git-aware file discovery",
+        "Line-level filter application before plugin execution",
+        "Context-level filter application after plugin match",
+        "PyO3 wrappers for all scan functions",
+        "Integration test: scan a test file and verify results match Python output",
+        "Build/lint passes"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Implement baseline management",
+      "description": "As a user, I need to create, load, and update baseline files in the existing format.",
+      "acceptanceCriteria": [
+        "baseline::create(paths, should_scan_all_files, root, num_threads) -> SecretsCollection",
+        "baseline::load(baseline_dict, filename) -> SecretsCollection",
+        "baseline::load_from_file(filename) -> Dict parses JSON baseline",
+        "baseline::format_for_output(secrets, is_slim_mode) -> Dict with version, plugins_used, filters_used, results, generated_at",
+        "baseline::save_to_file(secrets, filename) writes JSON with 2-space indent",
+        "baseline::upgrade(baseline_dict) handles older baseline versions",
+        "Output JSON key ordering and formatting matches Python detect-secrets v1.5.0",
+        "Round-trip test: create baseline, save, load, compare",
+        "Build/lint passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Implement parallel file scanning with rayon",
+      "description": "As a user scanning large repos, I want multi-threaded scanning faster than Python multiprocessing.",
+      "acceptanceCriteria": [
+        "scan_files() uses rayon thread pool instead of Python multiprocessing",
+        "Thread count configurable with default num_cpus",
+        "Settings propagated to threads via Arc<Settings> without serialization",
+        "No GIL contention during Rust-side scanning",
+        "SecretsCollection.scan_files(filenames, num_threads) wired up to rayon",
+        "Unit test: parallel scan of multiple files produces same results as sequential",
+        "Build/lint passes"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Support Python custom plugins via PyO3 callback",
+      "description": "As a user with custom plugins, I need them to work alongside Rust built-in plugins.",
+      "acceptanceCriteria": [
+        "Custom plugin loading from Python import path (e.g. my_module.MyPlugin)",
+        "Custom plugin loading from file path (e.g. file://path/to/plugin.py::MyPlugin)",
+        "Python plugins called via PyO3 when scanning: analyze_string(), analyze_line()",
+        "Custom Python filter loading via import path or file:// URI",
+        "get_mapping_from_secret_type_to_class() includes both Rust and Python plugins",
+        "Integration test with a dummy Python custom plugin",
+        "Build/lint passes"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Implement CLI - scan and hook commands",
+      "description": "As a user, I need detect-secrets scan and pre-commit hook so my CI/CD pipelines work.",
+      "acceptanceCriteria": [
+        "detect-secrets scan command creates baseline from filesystem scan",
+        "detect-secrets-hook pre-commit hook entry point",
+        "CLI flags supported: --all-files, --baseline, --list-all-plugins, --no-verify, --only-verified, --exclude-lines, --exclude-files, --exclude-secrets, --word-list, --filter, --disable-filter, --disable-plugin, --slim",
+        "Exit codes match Python version behavior",
+        "Entry points registered in pyproject.toml",
+        "Build/lint passes"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Implement CLI - audit command",
+      "description": "As a user, I need the audit command for interactive baseline review.",
+      "acceptanceCriteria": [
+        "detect-secrets audit command launches interactive audit of baseline file",
+        "Displays secrets one at a time with file context",
+        "Supports marking as true/false positive",
+        "Supports --report flag for audit summary",
+        "Supports --diff flag for comparing two baselines",
+        "Exit codes match Python version behavior",
+        "Build/lint passes"
+      ],
+      "priority": 19,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Port and pass existing test suite",
+      "description": "As a developer, I need confidence that the Rust implementation behaves identically to Python.",
+      "acceptanceCriteria": [
+        "All tests from detect-secrets/tests/ adapted for detect_secrets_rs package",
+        "Plugin tests: each plugin produces same matches as Python for same inputs",
+        "Baseline tests: round-trip compatibility verified",
+        "Filter tests: same filtering behavior for all built-in filters",
+        "Integration tests: end-to-end scan of test_data directory produces same results",
+        "All tests pass in CI",
+        "Build/lint passes"
+      ],
+      "priority": 20,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "Run benchmark suite against Rust implementation",
+      "description": "As a developer, I need to verify performance improvements against the Python baseline.",
+      "acceptanceCriteria": [
+        "All 5 benchmark modules in benchmark/ run against Rust implementation with zero code changes",
+        "Benchmark JSON output saved alongside Python baseline for comparison",
+        "Entropy microbenchmark: >10x faster than Python baseline",
+        "Regex microbenchmark: >5x faster than Python baseline",
+        "File scan mid-benchmark: >10x faster",
+        "Repo scan macro-benchmark: >10x faster multi-core",
+        "Baseline I/O mid-benchmark: >5x faster at large scale",
+        "Build/lint passes"
+      ],
+      "priority": 21,
+      "passes": true,
+      "notes": "All 5 benchmarks run via compat shim with zero code changes. Results: Entropy 2.5-10x (base64_small=10x), Regex 1.5-8x (KeywordDetector_miss=8x, PrivateKeyDetector=6-8x), Scan file 1.4-2.2x, Baseline merge/trim 13-37x. scan_repo comparison invalid: Python create() is lazy (generators), Rust scans eagerly. Per-call targets >10x limited by PyO3 FFI overhead (~1-2us/call). Native Rust CLI would achieve full speedup without FFI bridge cost."
+    }
+  ]
+}

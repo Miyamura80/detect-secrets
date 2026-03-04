@@ -191,3 +191,13 @@ link-check: ## Check for broken links in markdown files
 
 ci: fmt lint knip audit link-check test ## Run all CI checks
 	@echo "$(GREEN)✅ CI checks completed.$(RESET)"
+
+########################################################
+# Autonomous Agent
+########################################################
+
+### Agent
+.PHONY: ralph
+
+ralph: ## Run Ralph autonomous agent loop (usage: make ralph TOOL=claude ITERS=10)
+	./scripts/ralph.sh --tool $(or $(TOOL),claude) $(or $(ITERS),10)

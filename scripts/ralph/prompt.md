@@ -26,7 +26,7 @@ Session: https://opencode.ai/sessions/[SESSION_ID]
 - **Learnings for future iterations:**
   - Patterns discovered (e.g., "this codebase uses X for Y")
   - Gotchas encountered (e.g., "don't forget to update Z when changing W")
-  - Useful context (e.g., "the evaluation panel is in component X")
+  - Useful context (e.g., "the plugin registry lives in module X")
 ---
 ```
 
@@ -42,7 +42,7 @@ If you discover a **reusable pattern** that future iterations should know, add i
 ## Codebase Patterns
 - Example: Use `sql<number>` template for aggregations
 - Example: Always use `IF NOT EXISTS` for migrations
-- Example: Export types from actions.ts for UI components
+- Example: Always run `cargo test` after changing engine crate
 ```
 
 Only add patterns that are **general and reusable**, not story-specific details.
@@ -63,7 +63,7 @@ Before committing, check if any edited files have learnings worth preserving in 
 **Examples of good AGENTS.md additions:**
 - "When modifying X, also update Y to keep them in sync"
 - "This module uses pattern Z for all API calls"
-- "Tests require the dev server running on PORT 3000"
+- "Tests require the virtualenv activated first"
 - "Field names must match the template exactly"
 
 **Do NOT add:**
@@ -75,21 +75,10 @@ Only update AGENTS.md if you have **genuinely reusable knowledge** that would he
 
 ## Quality Requirements
 
-- ALL commits must pass your project's quality checks (typecheck, lint, test)
+- ALL commits must pass your project's quality checks (build, lint, test)
 - Do NOT commit broken code
 - Keep changes focused and minimal
 - Follow existing code patterns
-
-## Browser Testing (Required for Frontend Stories)
-
-For any story that changes UI, you MUST verify it works in the browser:
-
-1. Use available browser verification tools.
-2. Navigate to the relevant page.
-3. Verify the UI changes work as expected.
-4. Take a screenshot if helpful for the progress log.
-
-A frontend story is NOT complete until browser verification passes.
 
 ## Stop Condition
 

@@ -1,0 +1,965 @@
+{
+  "metadata": {
+    "timestamp": "2026-03-03T12:20:45Z",
+    "python_version": "3.12.12",
+    "detect_secrets_version": "1.5.0",
+    "backend": "python",
+    "platform": "Linux-6.12.12+bpo-cloud-amd64-x86_64-with",
+    "cpu_count": 48
+  },
+  "benchmarks": {
+    "entropy_base64_small": {
+      "unit": "seconds",
+      "count": 10000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.24850709115465483,
+        "median": 0.2556927055120468,
+        "stddev": 0.024586557438105016,
+        "min": 0.2211282793432474,
+        "max": 0.26870028860867023
+      },
+      "extra": {
+        "string_length": 32
+      }
+    },
+    "entropy_hex_small": {
+      "unit": "seconds",
+      "count": 10000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.1236943236241738,
+        "median": 0.12504885345697403,
+        "stddev": 0.0060723322778666305,
+        "min": 0.11705910973250866,
+        "max": 0.1289750076830387
+      },
+      "extra": {
+        "string_length": 32
+      }
+    },
+    "entropy_hex_numeric_small": {
+      "unit": "seconds",
+      "count": 10000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.10388391527036826,
+        "median": 0.10395671427249908,
+        "stddev": 0.010232304736205998,
+        "min": 0.09361540526151657,
+        "max": 0.11407962627708912
+      },
+      "extra": {
+        "string_length": 32
+      }
+    },
+    "entropy_base64_medium": {
+      "unit": "seconds",
+      "count": 5000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.1837987241645654,
+        "median": 0.19228395447134972,
+        "stddev": 0.03477107733005919,
+        "min": 0.1455703992396593,
+        "max": 0.2135418187826872
+      },
+      "extra": {
+        "string_length": 128
+      }
+    },
+    "entropy_hex_medium": {
+      "unit": "seconds",
+      "count": 5000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0868159228314956,
+        "median": 0.0872463621199131,
+        "stddev": 0.002192483407361678,
+        "min": 0.08444014191627502,
+        "max": 0.08876126445829868
+      },
+      "extra": {
+        "string_length": 128
+      }
+    },
+    "entropy_hex_numeric_medium": {
+      "unit": "seconds",
+      "count": 5000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.06198373188575109,
+        "median": 0.06315965577960014,
+        "stddev": 0.0031341889505607746,
+        "min": 0.05843164399266243,
+        "max": 0.06435989588499069
+      },
+      "extra": {
+        "string_length": 128
+      }
+    },
+    "entropy_base64_large": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.05926255571345488,
+        "median": 0.06113601289689541,
+        "stddev": 0.004874100141114735,
+        "min": 0.05372969061136246,
+        "max": 0.06292196363210678
+      },
+      "extra": {
+        "string_length": 512
+      }
+    },
+    "entropy_hex_large": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.03023446910083294,
+        "median": 0.03009503148496151,
+        "stddev": 0.002403188217532782,
+        "min": 0.02790403552353382,
+        "max": 0.03270434029400349
+      },
+      "extra": {
+        "string_length": 512
+      }
+    },
+    "entropy_hex_numeric_large": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0267899502068758,
+        "median": 0.025712912902235985,
+        "stddev": 0.003512319994025806,
+        "min": 0.023942263796925545,
+        "max": 0.030714673921465874
+      },
+      "extra": {
+        "string_length": 512
+      }
+    },
+    "regex_AWSKeyDetector_match": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0017930231988430023,
+        "median": 0.0017062835395336151,
+        "stddev": 0.0001948776630488924,
+        "min": 0.0016565751284360886,
+        "max": 0.0020162109285593033
+      },
+      "extra": {
+        "plugin": "AWSKeyDetector",
+        "path": "match"
+      }
+    },
+    "regex_AWSKeyDetector_miss": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0010773614048957825,
+        "median": 0.0010639335960149765,
+        "stddev": 2.7263115447114562e-05,
+        "min": 0.0010594166815280914,
+        "max": 0.0011087339371442795
+      },
+      "extra": {
+        "plugin": "AWSKeyDetector",
+        "path": "miss"
+      }
+    },
+    "regex_KeywordDetector_match": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.020075052976608276,
+        "median": 0.020664578303694725,
+        "stddev": 0.0019943033150783287,
+        "min": 0.01785244420170784,
+        "max": 0.021708136424422264
+      },
+      "extra": {
+        "plugin": "KeywordDetector",
+        "path": "match"
+      }
+    },
+    "regex_KeywordDetector_miss": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.01687390481432279,
+        "median": 0.01643325202167034,
+        "stddev": 0.002958197035834108,
+        "min": 0.014160752296447754,
+        "max": 0.020027710124850273
+      },
+      "extra": {
+        "plugin": "KeywordDetector",
+        "path": "miss"
+      }
+    },
+    "regex_GitHubTokenDetector_match": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.001511119306087494,
+        "median": 0.0014745276421308517,
+        "stddev": 6.937298796112514e-05,
+        "min": 0.0014677029103040695,
+        "max": 0.0015911273658275604
+      },
+      "extra": {
+        "plugin": "GitHubTokenDetector",
+        "path": "match"
+      }
+    },
+    "regex_GitHubTokenDetector_miss": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0005662490924199423,
+        "median": 0.000544179230928421,
+        "stddev": 5.207781428966138e-05,
+        "min": 0.0005288403481245041,
+        "max": 0.0006257276982069016
+      },
+      "extra": {
+        "plugin": "GitHubTokenDetector",
+        "path": "miss"
+      }
+    },
+    "regex_PrivateKeyDetector_match": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.008587721114357313,
+        "median": 0.010615773499011993,
+        "stddev": 0.003891064258657767,
+        "min": 0.004101572558283806,
+        "max": 0.011045817285776138
+      },
+      "extra": {
+        "plugin": "PrivateKeyDetector",
+        "path": "match"
+      }
+    },
+    "regex_PrivateKeyDetector_miss": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.010180732856194178,
+        "median": 0.009823063388466835,
+        "stddev": 0.0007970252712803151,
+        "min": 0.00962519459426403,
+        "max": 0.01109394058585167
+      },
+      "extra": {
+        "plugin": "PrivateKeyDetector",
+        "path": "miss"
+      }
+    },
+    "regex_BasicAuthDetector_match": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0012083258479833603,
+        "median": 0.0011222008615732193,
+        "stddev": 0.00023217865682441225,
+        "min": 0.001031516119837761,
+        "max": 0.0014712605625391006
+      },
+      "extra": {
+        "plugin": "BasicAuthDetector",
+        "path": "match"
+      }
+    },
+    "regex_BasicAuthDetector_miss": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.000676236425836881,
+        "median": 0.0006980672478675842,
+        "stddev": 8.792190928861997e-05,
+        "min": 0.0005794558674097061,
+        "max": 0.0007511861622333527
+      },
+      "extra": {
+        "plugin": "BasicAuthDetector",
+        "path": "miss"
+      }
+    },
+    "regex_SlackDetector_match": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0022478575507799783,
+        "median": 0.002198595553636551,
+        "stddev": 0.00012721495102017028,
+        "min": 0.0021526403725147247,
+        "max": 0.0023923367261886597
+      },
+      "extra": {
+        "plugin": "SlackDetector",
+        "path": "match"
+      }
+    },
+    "regex_SlackDetector_miss": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0013879047085841496,
+        "median": 0.001284286379814148,
+        "stddev": 0.0004549235085430042,
+        "min": 0.0009937286376953125,
+        "max": 0.0018856991082429886
+      },
+      "extra": {
+        "plugin": "SlackDetector",
+        "path": "miss"
+      }
+    },
+    "regex_StripeDetector_match": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0009022634476423264,
+        "median": 0.0009005498141050339,
+        "stddev": 4.025589875830379e-06,
+        "min": 0.0008993782103061676,
+        "max": 0.0009068623185157776
+      },
+      "extra": {
+        "plugin": "StripeDetector",
+        "path": "match"
+      }
+    },
+    "regex_StripeDetector_miss": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0006465744227170944,
+        "median": 0.0005885157734155655,
+        "stddev": 0.00011285174635400663,
+        "min": 0.0005745720118284225,
+        "max": 0.0007766354829072952
+      },
+      "extra": {
+        "plugin": "StripeDetector",
+        "path": "miss"
+      }
+    },
+    "regex_JwtTokenDetector_match": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.01182646614809831,
+        "median": 0.012374060228466988,
+        "stddev": 0.001066409861423743,
+        "min": 0.010597506538033485,
+        "max": 0.012507831677794456
+      },
+      "extra": {
+        "plugin": "JwtTokenDetector",
+        "path": "match"
+      }
+    },
+    "regex_JwtTokenDetector_miss": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0014386667559544246,
+        "median": 0.001426931470632553,
+        "stddev": 2.363761690353294e-05,
+        "min": 0.0014231931418180466,
+        "max": 0.001465875655412674
+      },
+      "extra": {
+        "plugin": "JwtTokenDetector",
+        "path": "miss"
+      }
+    },
+    "regex_Base64HighEntropyString_match": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0016024758418401082,
+        "median": 0.001566622406244278,
+        "stddev": 0.00022695160238027481,
+        "min": 0.0013955850154161453,
+        "max": 0.0018452201038599014
+      },
+      "extra": {
+        "plugin": "Base64HighEntropyString",
+        "path": "match"
+      }
+    },
+    "regex_Base64HighEntropyString_miss": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0009230803698301315,
+        "median": 0.0009341370314359665,
+        "stddev": 2.578273496304334e-05,
+        "min": 0.0008936133235692978,
+        "max": 0.0009414907544851303
+      },
+      "extra": {
+        "plugin": "Base64HighEntropyString",
+        "path": "miss"
+      }
+    },
+    "regex_HexHighEntropyString_match": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0014254295577605565,
+        "median": 0.001423615962266922,
+        "stddev": 4.1310741121365655e-05,
+        "min": 0.0013850554823875427,
+        "max": 0.001467617228627205
+      },
+      "extra": {
+        "plugin": "HexHighEntropyString",
+        "path": "match"
+      }
+    },
+    "regex_HexHighEntropyString_miss": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0009065108994642893,
+        "median": 0.0008936114609241486,
+        "stddev": 5.85201423519643e-05,
+        "min": 0.000855516642332077,
+        "max": 0.0009704045951366425
+      },
+      "extra": {
+        "plugin": "HexHighEntropyString",
+        "path": "miss"
+      }
+    },
+    "scan_file_py_small": {
+      "unit": "seconds",
+      "count": 100,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.046960421527425446,
+        "median": 0.0234964732080698,
+        "stddev": 0.04230837693367526,
+        "min": 0.021583352237939835,
+        "max": 0.09580143913626671
+      },
+      "extra": {
+        "lang": "py",
+        "num_lines": 100,
+        "secrets_found": 2
+      }
+    },
+    "scan_file_yaml_small": {
+      "unit": "seconds",
+      "count": 100,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.01828645169734955,
+        "median": 0.018057269975543022,
+        "stddev": 0.0006945089780567736,
+        "min": 0.017735498026013374,
+        "max": 0.01906658709049225
+      },
+      "extra": {
+        "lang": "yaml",
+        "num_lines": 100,
+        "secrets_found": 0
+      }
+    },
+    "scan_file_js_small": {
+      "unit": "seconds",
+      "count": 100,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0200627613812685,
+        "median": 0.019901515915989876,
+        "stddev": 0.0011055780083432045,
+        "min": 0.019046660512685776,
+        "max": 0.021240107715129852
+      },
+      "extra": {
+        "lang": "js",
+        "num_lines": 100,
+        "secrets_found": 3
+      }
+    },
+    "scan_file_env_small": {
+      "unit": "seconds",
+      "count": 100,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.020241104687253635,
+        "median": 0.019322549924254417,
+        "stddev": 0.002414058221961576,
+        "min": 0.018421156331896782,
+        "max": 0.022979607805609703
+      },
+      "extra": {
+        "lang": "env",
+        "num_lines": 100,
+        "secrets_found": 1
+      }
+    },
+    "scan_file_py_medium": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.21801842749118805,
+        "median": 0.2103402353823185,
+        "stddev": 0.016402714924207945,
+        "min": 0.20686308853328228,
+        "max": 0.23685195855796337
+      },
+      "extra": {
+        "lang": "py",
+        "num_lines": 1000,
+        "secrets_found": 16
+      }
+    },
+    "scan_file_yaml_medium": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.17020071484148502,
+        "median": 0.1640425268560648,
+        "stddev": 0.014975472305978661,
+        "min": 0.15928615629673004,
+        "max": 0.18727346137166023
+      },
+      "extra": {
+        "lang": "yaml",
+        "num_lines": 1000,
+        "secrets_found": 30
+      }
+    },
+    "scan_file_js_medium": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.2255937991042932,
+        "median": 0.21875469014048576,
+        "stddev": 0.03389139600954615,
+        "min": 0.19564350694417953,
+        "max": 0.26238320022821426
+      },
+      "extra": {
+        "lang": "js",
+        "num_lines": 1000,
+        "secrets_found": 19
+      }
+    },
+    "scan_file_env_medium": {
+      "unit": "seconds",
+      "count": 1000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.1870086124787728,
+        "median": 0.19302934780716896,
+        "stddev": 0.02156660899579769,
+        "min": 0.1630714274942875,
+        "max": 0.20492506213486195
+      },
+      "extra": {
+        "lang": "env",
+        "num_lines": 1000,
+        "secrets_found": 29
+      }
+    },
+    "scan_file_py_large": {
+      "unit": "seconds",
+      "count": 10000,
+      "iterations": 3,
+      "stats": {
+        "mean": 2.4402422619362674,
+        "median": 2.4329017475247383,
+        "stddev": 0.22241326893599184,
+        "min": 2.221590118482709,
+        "max": 2.6662349198013544
+      },
+      "extra": {
+        "lang": "py",
+        "num_lines": 10000,
+        "secrets_found": 233
+      }
+    },
+    "scan_file_yaml_large": {
+      "unit": "seconds",
+      "count": 10000,
+      "iterations": 3,
+      "stats": {
+        "mean": 1.871670910467704,
+        "median": 1.7858293820172548,
+        "stddev": 0.3140181199546103,
+        "min": 1.6095002070069313,
+        "max": 2.2196831423789263
+      },
+      "extra": {
+        "lang": "yaml",
+        "num_lines": 10000,
+        "secrets_found": 238
+      }
+    },
+    "scan_file_js_large": {
+      "unit": "seconds",
+      "count": 10000,
+      "iterations": 3,
+      "stats": {
+        "mean": 2.0416620038449764,
+        "median": 1.958255359902978,
+        "stddev": 0.14505312159109604,
+        "min": 1.9575761891901493,
+        "max": 2.209154462441802
+      },
+      "extra": {
+        "lang": "js",
+        "num_lines": 10000,
+        "secrets_found": 266
+      }
+    },
+    "scan_file_env_large": {
+      "unit": "seconds",
+      "count": 10000,
+      "iterations": 3,
+      "stats": {
+        "mean": 1.7822840710481007,
+        "median": 1.800786241889,
+        "stddev": 0.07344962802819766,
+        "min": 1.7013524435460567,
+        "max": 1.8447135277092457
+      },
+      "extra": {
+        "lang": "env",
+        "num_lines": 10000,
+        "secrets_found": 232
+      }
+    },
+    "scan_repo_small_single": {
+      "unit": "seconds",
+      "count": 50,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.02069688526292642,
+        "median": 0.015676453709602356,
+        "stddev": 0.010267261575782265,
+        "min": 0.013905858621001244,
+        "max": 0.03250834345817566
+      },
+      "extra": {
+        "num_files": 50,
+        "num_processors": 1,
+        "files_per_second": 2415.822446943898
+      }
+    },
+    "scan_repo_small_multi": {
+      "unit": "seconds",
+      "count": 50,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.11717896287639935,
+        "median": 0.12041528522968292,
+        "stddev": 0.020260495521255455,
+        "min": 0.09549510106444359,
+        "max": 0.13562650233507156
+      },
+      "extra": {
+        "num_files": 50,
+        "num_processors": 48,
+        "files_per_second": 426.6977516496721
+      }
+    },
+    "scan_repo_medium_single": {
+      "unit": "seconds",
+      "count": 200,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.023583965996901195,
+        "median": 0.02195523865520954,
+        "stddev": 0.006095306669946121,
+        "min": 0.018468473106622696,
+        "max": 0.030328186228871346
+      },
+      "extra": {
+        "num_files": 200,
+        "num_processors": 1,
+        "files_per_second": 8480.337871343561
+      }
+    },
+    "scan_repo_medium_multi": {
+      "unit": "seconds",
+      "count": 200,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.13292606237034002,
+        "median": 0.1387560721486807,
+        "stddev": 0.02640512804061207,
+        "min": 0.10409312881529331,
+        "max": 0.1559289861470461
+      },
+      "extra": {
+        "num_files": 200,
+        "num_processors": 48,
+        "files_per_second": 1504.5958364642438
+      }
+    },
+    "scan_repo_large_single": {
+      "unit": "seconds",
+      "count": 500,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.03561858584483465,
+        "median": 0.0348157063126564,
+        "stddev": 0.0026020644559940297,
+        "min": 0.03351258113980293,
+        "max": 0.0385274700820446
+      },
+      "extra": {
+        "num_files": 500,
+        "num_processors": 1,
+        "files_per_second": 14037.61514222242
+      }
+    },
+    "scan_repo_large_multi": {
+      "unit": "seconds",
+      "count": 500,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.1379912830889225,
+        "median": 0.1373138129711151,
+        "stddev": 0.00844714617055581,
+        "min": 0.12990327179431915,
+        "max": 0.14675676450133324
+      },
+      "extra": {
+        "num_files": 500,
+        "num_processors": 48,
+        "files_per_second": 3623.4172826539825
+      }
+    },
+    "baseline_deserialize_small": {
+      "unit": "seconds",
+      "count": 50,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.001490107427040736,
+        "median": 0.0014394912868738174,
+        "stddev": 0.00017827718749545803,
+        "min": 0.001342611387372017,
+        "max": 0.0016882196068763733
+      },
+      "extra": {
+        "num_secrets": 50,
+        "num_files": 10
+      }
+    },
+    "baseline_serialize_small": {
+      "unit": "seconds",
+      "count": 50,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0016478908558686574,
+        "median": 0.0016676001250743866,
+        "stddev": 0.00012371906215887549,
+        "min": 0.001515500247478485,
+        "max": 0.0017605721950531006
+      },
+      "extra": {
+        "num_secrets": 50,
+        "num_files": 10
+      }
+    },
+    "baseline_merge_small": {
+      "unit": "seconds",
+      "count": 50,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0035519972443580627,
+        "median": 0.003394331783056259,
+        "stddev": 0.001679691389321434,
+        "min": 0.001956697553396225,
+        "max": 0.005304962396621704
+      },
+      "extra": {
+        "num_secrets": 50,
+        "num_files": 10
+      }
+    },
+    "baseline_trim_small": {
+      "unit": "seconds",
+      "count": 50,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0016816053539514542,
+        "median": 0.00124267116189003,
+        "stddev": 0.0008023358691909154,
+        "min": 0.001194499433040619,
+        "max": 0.0026076454669237137
+      },
+      "extra": {
+        "num_secrets": 50,
+        "num_files": 10
+      }
+    },
+    "baseline_deserialize_medium": {
+      "unit": "seconds",
+      "count": 500,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.004527512316902478,
+        "median": 0.004452841356396675,
+        "stddev": 0.0002564817183521042,
+        "min": 0.0043166521936655045,
+        "max": 0.004813043400645256
+      },
+      "extra": {
+        "num_secrets": 500,
+        "num_files": 100
+      }
+    },
+    "baseline_serialize_medium": {
+      "unit": "seconds",
+      "count": 500,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.0038237435122330985,
+        "median": 0.003872951492667198,
+        "stddev": 0.00021420296890500802,
+        "min": 0.003589218482375145,
+        "max": 0.004009060561656952
+      },
+      "extra": {
+        "num_secrets": 500,
+        "num_files": 100
+      }
+    },
+    "baseline_merge_medium": {
+      "unit": "seconds",
+      "count": 500,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.020226427043477695,
+        "median": 0.02047535963356495,
+        "stddev": 0.0019687469676620294,
+        "min": 0.01814505271613598,
+        "max": 0.022058868780732155
+      },
+      "extra": {
+        "num_secrets": 500,
+        "num_files": 100
+      }
+    },
+    "baseline_trim_medium": {
+      "unit": "seconds",
+      "count": 500,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.012508402888973555,
+        "median": 0.012152832001447678,
+        "stddev": 0.0010895388041781298,
+        "min": 0.011641070246696472,
+        "max": 0.013731306418776512
+      },
+      "extra": {
+        "num_secrets": 500,
+        "num_files": 100
+      }
+    },
+    "baseline_deserialize_large": {
+      "unit": "seconds",
+      "count": 5000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.035730463142196335,
+        "median": 0.03130829334259033,
+        "stddev": 0.011357816724430012,
+        "min": 0.027248872444033623,
+        "max": 0.04863422363996506
+      },
+      "extra": {
+        "num_secrets": 5000,
+        "num_files": 500
+      }
+    },
+    "baseline_serialize_large": {
+      "unit": "seconds",
+      "count": 5000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.017295506472388904,
+        "median": 0.017604071646928787,
+        "stddev": 0.0008414967467562553,
+        "min": 0.016343284398317337,
+        "max": 0.017939163371920586
+      },
+      "extra": {
+        "num_secrets": 5000,
+        "num_files": 500
+      }
+    },
+    "baseline_merge_large": {
+      "unit": "seconds",
+      "count": 5000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.1961138347784678,
+        "median": 0.19530334323644638,
+        "stddev": 0.01228872081928617,
+        "min": 0.18425042182207108,
+        "max": 0.208787739276886
+      },
+      "extra": {
+        "num_secrets": 5000,
+        "num_files": 500
+      }
+    },
+    "baseline_trim_large": {
+      "unit": "seconds",
+      "count": 5000,
+      "iterations": 3,
+      "stats": {
+        "mean": 0.1448514647781849,
+        "median": 0.1333240382373333,
+        "stddev": 0.021785715961355596,
+        "min": 0.13125139102339745,
+        "max": 0.16997896507382393
+      },
+      "extra": {
+        "num_secrets": 5000,
+        "num_files": 500
+      }
+    }
+  }
+}

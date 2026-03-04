@@ -1,0 +1,16 @@
+[package]
+name = "detect-secrets-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Rust-backed drop-in replacement for Yelp/detect-secrets with PyO3 bindings"
+license = "MIT"
+
+[lib]
+name = "detect_secrets_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+engine = { path = "../engine" }
+pyo3 = { version = "0.23", features = ["extension-module"] }
+serde_json = "1"
+regex = "1"

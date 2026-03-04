@@ -22,6 +22,13 @@ src-tauri/target/
 bun.lockb
 docs/bun.lockb
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.so
+
 # Environments & secrets
 .env
 .prod.env
