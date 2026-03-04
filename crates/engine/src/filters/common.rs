@@ -29,6 +29,8 @@ mod tests {
     #[test]
     fn test_valid_file_exists() {
         // Cargo.toml should exist at the workspace root
-        assert!(!is_invalid_file("/config/Github/detect-secrets/Cargo.toml"));
+        assert!(!is_invalid_file(
+            &format!("{}/Cargo.toml", env!("CARGO_MANIFEST_DIR"))
+        ));
     }
 }
